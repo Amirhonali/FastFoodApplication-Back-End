@@ -5,8 +5,7 @@ namespace FastFood.Domain.Enums;
 public enum OrderStatus
 {
     Pending,
-    Cooking,
-    Ready,
-    Delivered,
-    Canceled
+    Processing,
+    Completed,
+    Cancelled
 }
