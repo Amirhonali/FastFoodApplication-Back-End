@@ -1,8 +1,8 @@
 using System;
 
-namespace FastFood.Domain.Entities;
+namespace FastFood.Application.DTOs.ProductDTOs;
 
-public class Product
+public class ProductGetDTO
 {
     public int Id { get; set; }
     public string Name { get; set; }
@@ -10,7 +10,4 @@ public class Product
     public string Description { get; set; }
     public string ImageUrl { get; set; }
     public int ProductCategoryId { get; set; }
-    public ProductCategory ProductCategory { get; set; }
-    public ICollection<ProductIngredient> ProductIngredients { get; set; } = new List<ProductIngredient>();
-
-}
+    }

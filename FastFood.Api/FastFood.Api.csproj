@@ -17,9 +17,6 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="Controllers/" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="../FastFood.Application/FastFood.Application.csproj" />
     <ProjectReference Include="../FastFood.Infrastructure/FastFood.Infrastructure.csproj" />
   </ItemGroup>
