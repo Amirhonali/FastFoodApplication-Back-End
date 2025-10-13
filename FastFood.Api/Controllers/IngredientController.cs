@@ -1,9 +1,7 @@
-using System;
 using FastFood.Application.DTOs.IngredientDTOs;
 using FastFood.Application.Interfaces;
 using FastFood.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 
 namespace FastFood.Api.Controllers;
 
@@ -22,16 +20,7 @@ public class IngredientController : ControllerBase
     public async Task<IActionResult> GetAll()
     {
         var ingredients = await _ingredientService.GetAllAsync();
-
-        var result = ingredients.Select(i => new IngredientGetDTO
-        {
-            Id = i.Id,
-            Name = i.Name,
-            Quantity = i.Quantity,
-            Weight = i.Weight,
-            Volume = i.Volume
-        });
-        return Ok(result);
+        return Ok(ingredients);
     }
 
     [HttpGet("{id:int}")]
@@ -41,44 +30,12 @@ public class IngredientController : ControllerBase
         if (ingredient == null)
             return NotFound();
 
-        var dto = new IngredientGetDTO
-        {
-            Id = ingredient.Id,
-            Name = ingredient.Name,
-            Quantity = ingredient.Quantity,
-            Weight = ingredient.Weight,
-            Volume = ingredient.Volume
-        };
-
-        return Ok(dto);
-    }
-
-    [HttpGet("search")]
-    public async Task<IActionResult> Search([FromQuery] string name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            return BadRequest("Search term cannot be empty.");
-
-        var ingredients = await _ingredientService.SearchAsync(name);
-
-        var result = ingredients.Select(i => new IngredientGetDTO
-        {
-            Id = i.Id,
-            Name = i.Name,
-            Quantity = i.Quantity,
-            Weight = i.Weight,
-            Volume = i.Volume
-        });
-
-        return Ok(result);
+        return Ok(ingredient);
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] IngredientDTO dto)
+    public async Task<IActionResult> Create(IngredientDTO dto)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
         var ingredient = new Ingredient
         {
             Name = dto.Name,
@@ -89,25 +46,12 @@ public class IngredientController : ControllerBase
         };
 
         await _ingredientService.CreateAsync(ingredient);
-
-        var result = new IngredientGetDTO
-        {
-            Id = ingredient.Id,
-            Name = ingredient.Name,
-            Quantity = ingredient.Quantity,
-            Weight = ingredient.Weight,
-            Volume = ingredient.Volume
-        };
-
-        return CreatedAtAction(nameof(GetById), new { id = ingredient.Id }, result);
+        return CreatedAtAction(nameof(GetById), new { id = ingredient.Id }, ingredient);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] IngredientDTO dto)
+    public async Task<IActionResult> Update(int id, IngredientDTO dto)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
         var existing = await _ingredientService.GetByIdAsync(id);
         if (existing == null)
             return NotFound();
@@ -119,14 +63,13 @@ public class IngredientController : ControllerBase
         existing.Volume = dto.Volume;
 
         await _ingredientService.UpdateAsync(existing);
-
         return Ok(existing);
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var ingredient = await _ingredientService.GetByIdAsync(id);
+         var ingredient = await _ingredientService.GetByIdAsync(id);
         if (ingredient == null)
             return NotFound();
 

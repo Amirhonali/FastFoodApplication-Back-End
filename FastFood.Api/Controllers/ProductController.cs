@@ -22,18 +22,7 @@ public class ProductController : ControllerBase
     public async Task<IActionResult> GetAll()
     {
         var products = await _productService.GetAllAsync();
-
-        var result = products.Select(p => new ProductGetDTO
-        {
-            Id = p.Id,
-            Name = p.Name,
-            Price = p.Price,
-            Description = p.Description,
-            ImageUrl = p.ImageUrl,
-            ProductCategoryId = p.ProductCategoryId,
-        });
-
-        return Ok(result);
+        return Ok(products);
     }
 
     [HttpGet("{id:int}")]
@@ -43,17 +32,7 @@ public class ProductController : ControllerBase
         if (product == null)
             return NotFound();
 
-        var dto = new ProductGetDTO
-        {
-            Id = product.Id,
-            Name = product.Name,
-            Price = product.Price,
-            Description = product.Description,
-            ImageUrl = product.ImageUrl,
-            ProductCategoryId = product.ProductCategoryId,
-        };
-
-        return Ok(dto);
+        return Ok(product);
     }
 
     [HttpGet("search")]
@@ -62,15 +41,14 @@ public class ProductController : ControllerBase
         if (string.IsNullOrWhiteSpace(name))
             return BadRequest("Search term cannot be empty.");
 
-        var products = await _productService.SearchAsync(name);
+        var ingredients = await _productService.SearchAsync(name);
 
-        var result = products.Select(p => new ProductGetDTO
+        var result = ingredients.Select(p => new ProductGetDTO
         {
             Id = p.Id,
             Name = p.Name,
-            Price = p.Price,
             Description = p.Description,
-            ImageUrl = p.ImageUrl,
+            Price = p.Price,
             ProductCategoryId = p.ProductCategoryId,
         });
 
@@ -78,68 +56,85 @@ public class ProductController : ControllerBase
     }
 
     [HttpPost]
-    [Consumes("multipart/form-data")]
     public async Task<IActionResult> Create([FromForm] ProductDTO dto)
     {
-        if (dto.Image == null)
-            return BadRequest("Image is required.");
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
 
-        var uploadsFolder = Path.Combine(_env.WebRootPath ?? "wwwroot", "images");
-        Directory.CreateDirectory(uploadsFolder);
+        string imagePath = null;
 
-        var fileName = $"{Guid.NewGuid()}{Path.GetExtension(dto.Image.FileName)}";
-        var filePath = Path.Combine(uploadsFolder, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
+        if (dto.Image != null && dto.Image.Length > 0)
         {
-            await dto.Image.CopyToAsync(stream);
-        }
-
-        var product = new Product
-        {
-            Name = dto.Name,
-            Price = dto.Price,
-            Description = dto.Description,
-            ImageUrl = $"Product/images/{fileName}",
-            ProductCategoryId = dto.ProductCategoryId
-        };
-
-        await _productService.AddAsync(product);
-
-        return CreatedAtAction(nameof(GetById), new { id = product.Id }, product);
-    }
-
-    // Hozirgi method:
-    [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromForm] ProductDTO dto)
-    {
-        var existing = await _productService.GetByIdAsync(id);
-        if (existing == null)
-            return NotFound();
-
-        if (dto.Image != null)
-        {
-            var uploadsFolder = Path.Combine(_env.WebRootPath ?? "wwwroot", "Product/images");
+            string uploadsFolder = Path.Combine(_env.WebRootPath, "images", "products");
             Directory.CreateDirectory(uploadsFolder);
 
-            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(dto.Image.FileName)}";
-            var filePath = Path.Combine(uploadsFolder, fileName);
+            string uniqueFileName = $"{Guid.NewGuid()}_{dto.Image.FileName}";
+            string filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
             using (var stream = new FileStream(filePath, FileMode.Create))
             {
                 await dto.Image.CopyToAsync(stream);
             }
 
-            existing.ImageUrl = $"/Product/images/{fileName}";
+            imagePath = $"/images/products/{uniqueFileName}";
+        }
+
+        var product = new Product
+        {
+            Name = dto.Name,
+            Description = dto.Description,
+            Price = dto.Price,
+            ImageUrl = imagePath,
+            ProductCategoryId = dto.ProductCategoryId
+        };
+
+        await _productService.AddAsync(product);
+        return CreatedAtAction(nameof(GetById), new { id = product.Id }, product);
+    }
+
+    
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromForm] ProductDTO dto)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var existing = await _productService.GetByIdAsync(id);
+        if (existing == null)
+            return NotFound();
+
+        string imagePath = existing.ImageUrl;
+
+        if (dto.Image != null && dto.Image.Length > 0)
+        {
+            string uploadsFolder = Path.Combine(_env.WebRootPath, "images", "products");
+            Directory.CreateDirectory(uploadsFolder);
+
+            string uniqueFileName = $"{Guid.NewGuid()}_{dto.Image.FileName}";
+            string filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await dto.Image.CopyToAsync(stream);
+            }
+
+            if (!string.IsNullOrEmpty(existing.ImageUrl))
+            {
+                var oldFile = Path.Combine(_env.WebRootPath, existing.ImageUrl.TrimStart('/'));
+                if (System.IO.File.Exists(oldFile))
+                    System.IO.File.Delete(oldFile);
+            }
+
+            imagePath = $"/images/products/{uniqueFileName}";
         }
 
         existing.Name = dto.Name;
-        existing.Price = dto.Price;
         existing.Description = dto.Description;
+        existing.Price = dto.Price;
+        existing.ImageUrl = imagePath;
         existing.ProductCategoryId = dto.ProductCategoryId;
 
         await _productService.UpdateAsync(id, existing);
-
         return Ok(existing);
     }
 
@@ -152,17 +147,12 @@ public class ProductController : ControllerBase
 
         if (!string.IsNullOrEmpty(product.ImageUrl))
         {
-            var filePath = Path.Combine(_env.WebRootPath ?? "wwwroot", product.ImageUrl.TrimStart('/'));
+            var filePath = Path.Combine(_env.WebRootPath, product.ImageUrl.TrimStart('/'));
             if (System.IO.File.Exists(filePath))
-            {
                 System.IO.File.Delete(filePath);
-            }
         }
 
-        var deleted = await _productService.DeleteAsync(id);
-        if (!deleted)
-            return NotFound();
-
+        await _productService.DeleteAsync(id);
         return NoContent();
     }
 }

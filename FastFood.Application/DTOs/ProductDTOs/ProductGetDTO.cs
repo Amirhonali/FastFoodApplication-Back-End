@@ -10,4 +10,6 @@ public class ProductGetDTO
     public string Description { get; set; }
     public string ImageUrl { get; set; }
     public int ProductCategoryId { get; set; }
-    }
+    public List<int> IngredientIds { get; set; } = new List<int>();
+
+}

@@ -1,8 +1,7 @@
-using FastFood.Application.DTOs.ProductCategoryDTOs;
 using FastFood.Application.Interfaces;
+using FastFood.Application.DTOs.ProductCategoryDTOs;
 using FastFood.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
-using System.Threading.Tasks;
 
 namespace FastFood.Api.Controllers;
 
@@ -10,81 +9,54 @@ namespace FastFood.Api.Controllers;
 [Route("api/[controller]")]
 public class ProductCategoryController : ControllerBase
 {
-    private readonly IProductCategoryService _productCategoryService;
+    private readonly IProductCategoryService _categoryService;
 
-    public ProductCategoryController(IProductCategoryService productCategoryService)
+    public ProductCategoryController(IProductCategoryService categoryService)
     {
-        _productCategoryService = productCategoryService;
+        _categoryService = categoryService;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        var categories = await _productCategoryService.GetAllAsync();
-
-        var result = categories.Select(c => new ProductCatGetDTO
-        {
-            Name = c.Name
-        });
-
-        return Ok(result);
+        var categories = await _categoryService.GetAllAsync();
+        return Ok(categories);
     }
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var category = await _productCategoryService.GetByIdAsync(id);
+        var category = await _categoryService.GetByIdAsync(id);
         if (category == null)
             return NotFound();
 
-        var dto = new ProductCatGetDTO
-        {
-            Name = category.Name
-        };
-
-        return Ok(dto);
+        return Ok(category);
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] ProductCatCreateDTO dto)
+    public async Task<IActionResult> Create(ProductCatCreateDTO dto)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var category = new ProductCategory
-        {
-            Name = dto.Name
-        };
-
-        await _productCategoryService.AddAsync(category);
-
-        var result = new ProductCatGetDTO { Name = category.Name };
-
-        return CreatedAtAction(nameof(GetById), new { id = category.Id }, result);
+        var category = new ProductCategory { Name = dto.Name };
+        await _categoryService.AddAsync(category);
+        return CreatedAtAction(nameof(GetById), new { id = category.Id }, category);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] ProductCatUpdateDTO dto)
+    public async Task<IActionResult> Update(int id, ProductCatUpdateDTO dto)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var existing = await _productCategoryService.GetByIdAsync(id);
+        var existing = await _categoryService.GetByIdAsync(id);
         if (existing == null)
             return NotFound();
 
         existing.Name = dto.Name;
-
-        var updated = await _productCategoryService.UpdateAsync(id, existing);
-        var result = new ProductCatGetDTO { Name = updated!.Name };
-
-        return Ok(result);
+        await _categoryService.UpdateAsync(id, existing);
+        return Ok(existing);
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _productCategoryService.DeleteAsync(id);
+        var deleted = await _categoryService.DeleteAsync(id);
         if (!deleted)
             return NotFound();
 

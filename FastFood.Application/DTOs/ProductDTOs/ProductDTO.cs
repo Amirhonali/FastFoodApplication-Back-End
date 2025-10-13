@@ -14,4 +14,5 @@ public class ProductDTO
     public IFormFile? Image { get; set; }
 
     public int ProductCategoryId { get; set; }
+    public List<int> IngredientIds { get; set; } = new List<int>();
 }
