@@ -20,5 +20,8 @@
     <ProjectReference Include="../FastFood.Application/FastFood.Application.csproj" />
     <ProjectReference Include="../FastFood.Infrastructure/FastFood.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="wwwroot/" />
+  </ItemGroup>
 
 </Project>

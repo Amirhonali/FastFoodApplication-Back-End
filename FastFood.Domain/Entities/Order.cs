@@ -18,5 +18,6 @@ public class Order
 
     public decimal TotalPrice { get; set; }
     public string Location { get; set; }
+    public OrderType Type { get; set; }
     //public string PaymentMethod { get; set; }
 }

@@ -7,7 +7,7 @@ public class IngredientDTO
 {
     public string Name { get; set; } = string.Empty;
     public IngredientCategory IngredientCategory { get; set; }
-    public int? Quantity { get; set; }
+    public decimal? Quantity { get; set; } // ombordagi mavjud miqdor (normalizatsiya qilindi decimal)
     public decimal? Weight { get; set; }
     public decimal? Volume { get; set; }
 }
