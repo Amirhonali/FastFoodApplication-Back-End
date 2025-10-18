@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json.Serialization;
 
 namespace FastFood.Domain.Entities;
 
@@ -6,6 +7,8 @@ public class IngredientArrival
 {
     public int Id { get; set; }
     public int IngredientId { get; set; }
+    
+    [JsonIgnore]
     public Ingredient Ingredient { get; set; }
 
     public decimal Quantity { get; set; }  

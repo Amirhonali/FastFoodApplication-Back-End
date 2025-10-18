@@ -1,103 +1,118 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FastFood.Application.DTOs.IngredientDTOs;
 using FastFood.Application.Interfaces;
 using FastFood.Domain.Entities;
 using FastFood.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace FastFood.Infrastructure.Services;
-
-public class IngredientService : IIngredientService
+namespace FastFood.Infrastructure.Services
 {
-    private readonly AppDbContext _context;
-
-    public IngredientService(AppDbContext context)
+    public class IngredientService : IIngredientService
     {
-        _context = context;
-    }
+        private readonly AppDbContext _context;
 
-    public async Task<IEnumerable<Ingredient>> GetAllAsync()
-    {
-        return await _context.Ingredients
-            .Include(i => i.IngredientArrivals)
-            .AsNoTracking()
-            .ToListAsync();
-    }
+        public IngredientService(AppDbContext context)
+        {
+            _context = context;
+        }
 
-    public async Task<Ingredient?> GetByIdAsync(int id)
-    {
-        return await _context.Ingredients
-            .Include(i => i.IngredientArrivals)
-            .Include(i => i.ProductIngredients)
-                .ThenInclude(pi => pi.Product)
-            .FirstOrDefaultAsync(i => i.Id == id);
-    }
+        public async Task<IEnumerable<Ingredient>> GetAllAsync()
+        {
+            return await _context.Ingredients
+                .Include(i => i.IngredientArrivals)
+                .AsNoTracking()
+                .ToListAsync();
+        }
 
-    public async Task<Ingredient> CreateAsync(Ingredient ingredient)
-    {
-        _context.Ingredients.Add(ingredient);
-        await _context.SaveChangesAsync();
-        return ingredient;
-    }
+        public async Task<Ingredient?> GetByIdAsync(int id)
+        {
+            return await _context.Ingredients
+                .Include(i => i.IngredientArrivals)
+                .Include(i => i.ProductIngredients)
+                    .ThenInclude(pi => pi.Product)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == id);
+        }
 
-    public async Task<Ingredient?> UpdateAsync(int id, Ingredient ingredient)
-    {
-        var existing = await _context.Ingredients.FindAsync(id);
-        if (existing == null) return null;
+        public async Task<Ingredient> CreateAsync(Ingredient ingredient)
+        {
+            _context.Ingredients.Add(ingredient);
+            await _context.SaveChangesAsync();
+            return ingredient;
+        }
 
-        existing.Name = ingredient.Name;
-        existing.IngredientCategory = ingredient.IngredientCategory;
-        existing.Quantity = ingredient.Quantity;
-        existing.Weight = ingredient.Weight;
-        existing.Volume = ingredient.Volume;
+        public async Task<Ingredient?> UpdateAsync(int id, Ingredient ingredient)
+        {
+            var existing = await _context.Ingredients.FindAsync(id);
+            if (existing == null) return null;
 
-        await _context.SaveChangesAsync();
-        return existing;
-    }
+            existing.Name = ingredient.Name;
+            existing.IngredientCategory = ingredient.IngredientCategory;
+            existing.Quantity = ingredient.Quantity;
+            existing.Weight = ingredient.Weight;
+            existing.Volume = ingredient.Volume;
 
-    public async Task<bool> DeleteAsync(int id)
-    {
-        var existing = await _context.Ingredients.FindAsync(id);
-        if (existing == null) return false;
+            await _context.SaveChangesAsync();
+            return existing;
+        }
 
-        _context.Ingredients.Remove(existing);
-        await _context.SaveChangesAsync();
-        return true;
-    }
+        public async Task<bool> DeleteAsync(int id)
+        {
+            var existing = await _context.Ingredients.FindAsync(id);
+            if (existing == null) return false;
 
-    // PRICE/ARRIVAL: add arrival and update on-hand quantity
-    public async Task<IngredientArrival> AddArrivalAsync(IngredientArrival arrival)
-    {
-        var ing = await _context.Ingredients.FindAsync(arrival.IngredientId);
-        if (ing == null) throw new KeyNotFoundException("Ingredient not found");
+            _context.Ingredients.Remove(existing);
+            await _context.SaveChangesAsync();
+            return true;
+        }
 
-        _context.IngredientArrivals.Add(arrival);
+        // ✅ Добавление прихода + обновление остатков
+        public async Task<IngredientArrival> AddArrivalAsync(IngredientArrival arrival)
+        {
+            var ingredient = await _context.Ingredients.FindAsync(arrival.IngredientId);
+            if (ingredient == null)
+                throw new KeyNotFoundException($"Ingredient with id={arrival.IngredientId} not found");
 
-        // update on-hand quantity (we use decimal quantities - convert if needed)
-        var current = ing.Quantity; 
-        ing.Quantity = current + arrival.Quantity;
+            // обновляем остаток
+            ingredient.Quantity += arrival.Quantity;
 
-        await _context.SaveChangesAsync();
-        return arrival;
-    }
+            _context.IngredientArrivals.Add(arrival);
+            await _context.SaveChangesAsync();
 
-    public async Task<IEnumerable<IngredientArrival>> GetArrivalsAsync(int ingredientId)
-    {
-        return await _context.IngredientArrivals
-            .Where(a => a.IngredientId == ingredientId)
-            .OrderByDescending(a => a.ArrivalDate)
-            .AsNoTracking()
-            .ToListAsync();
-    }
+            // 🔁 подгружаем связанные данные для возврата
+            await _context.Entry(arrival)
+                .Reference(a => a.Ingredient)
+                .LoadAsync();
 
-    public async Task<IEnumerable<Ingredient>> SearchAsync(string name)
-    {
-        return await _context.Ingredients
-            .Where(i => EF.Functions.Like(i.Name, $"%{name}%"))
-            .AsNoTracking()
-            .ToListAsync();
+            return arrival;
+        }
+
+        public async Task<IEnumerable<IngredientArrival>> GetArrivalsAsync(int ingredientId)
+        {
+            return await _context.IngredientArrivals
+                .Where(a => a.IngredientId == ingredientId)
+                .Include(a => a.Ingredient)
+                .AsNoTracking()
+                .OrderByDescending(a => a.ArrivalDate)
+                .ToListAsync();
+        }
+
+        // ✅ Новый метод
+        public async Task<IngredientArrival?> GetArrivalByIdAsync(int arrivalId)
+        {
+            return await _context.IngredientArrivals
+                .Include(a => a.Ingredient)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == arrivalId);
+        }
+
+        public async Task<IEnumerable<Ingredient>> SearchAsync(string name)
+        {
+            return await _context.Ingredients
+                .Where(i => EF.Functions.Like(i.Name, $"%{name}%"))
+                .AsNoTracking()
+                .ToListAsync();
+        }
     }
 }
