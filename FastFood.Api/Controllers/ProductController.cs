@@ -3,80 +3,69 @@ using FastFood.Application.Interfaces;
 using FastFood.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
 
-namespace FastFood.Api.Controllers;
+namespace FastFood.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 public class ProductController : ControllerBase
 {
-    private readonly IProductService _productService;
+    private readonly IProductService _service;
     private readonly IWebHostEnvironment _env;
 
-    public ProductController(IProductService productService, IWebHostEnvironment env)
+    public ProductController(IProductService service, IWebHostEnvironment env)
     {
-        _productService = productService;
+        _service = service;
         _env = env;
     }
 
+    // ✅ Получить все продукты
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        var products = await _productService.GetAllAsync();
+        var products = await _service.GetAllAsync();
         return Ok(products);
     }
 
-    [HttpGet("{id:int}")]
+    // ✅ Получить продукт по Id
+    [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var product = await _productService.GetByIdAsync(id);
-        if (product == null)
-            return NotFound();
-
+        var product = await _service.GetByIdAsync(id);
+        if (product == null) return NotFound(new { message = "Product not found" });
         return Ok(product);
     }
 
+    // ✅ Поиск по имени
     [HttpGet("search")]
     public async Task<IActionResult> Search([FromQuery] string name)
     {
-        if (string.IsNullOrWhiteSpace(name))
-            return BadRequest("Search term cannot be empty.");
-
-        var ingredients = await _productService.SearchAsync(name);
-
-        var result = ingredients.Select(p => new ProductGetDTO
-        {
-            Id = p.Id,
-            Name = p.Name,
-            Description = p.Description,
-            Price = p.Price,
-            ProductCategoryId = p.ProductCategoryId,
-        });
-
-        return Ok(result);
+        var products = await _service.SearchAsync(name);
+        return Ok(products);
     }
 
+    // ✅ Создать продукт (с изображением и ингредиентами)
     [HttpPost]
-    public async Task<IActionResult> Create([FromForm] ProductDTO dto)
+    public async Task<IActionResult> Create([FromForm] ProductCreateDTO dto)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        string imagePath = null;
+        string? imageUrl = null;
 
-        if (dto.Image != null && dto.Image.Length > 0)
+        // 📸 если есть изображение — сохраняем
+        if (dto.ImageFile != null && dto.ImageFile.Length > 0)
         {
-            string uploadsFolder = Path.Combine(_env.WebRootPath, "images", "products");
-            Directory.CreateDirectory(uploadsFolder);
+            var uploadsDir = Path.Combine(_env.WebRootPath, "uploads");
+            if (!Directory.Exists(uploadsDir))
+                Directory.CreateDirectory(uploadsDir);
 
-            string uniqueFileName = $"{Guid.NewGuid()}_{dto.Image.FileName}";
-            string filePath = Path.Combine(uploadsFolder, uniqueFileName);
+            var fileName = Guid.NewGuid() + Path.GetExtension(dto.ImageFile.FileName);
+            var filePath = Path.Combine(uploadsDir, fileName);
 
             using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await dto.Image.CopyToAsync(stream);
-            }
+                await dto.ImageFile.CopyToAsync(stream);
 
-            imagePath = $"/images/products/{uniqueFileName}";
+            imageUrl = $"/uploads/{fileName}";
         }
 
         var product = new Product
@@ -84,75 +73,61 @@ public class ProductController : ControllerBase
             Name = dto.Name,
             Description = dto.Description,
             Price = dto.Price,
-            ImageUrl = imagePath,
+            ImageUrl = imageUrl ?? string.Empty,
             ProductCategoryId = dto.ProductCategoryId
         };
 
-        await _productService.AddAsync(product);
-        return CreatedAtAction(nameof(GetById), new { id = product.Id }, product);
+        var result = await _service.CreateAsync(product, dto.Ingredients);
+        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
-    
-    [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromForm] ProductDTO dto)
+    // ✅ Обновить продукт
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(int id, [FromForm] ProductUpdateDTO dto)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var existing = await _productService.GetByIdAsync(id);
+        var existing = await _service.GetByIdAsync(id);
         if (existing == null)
-            return NotFound();
+            return NotFound(new { message = "Product not found" });
 
-        string imagePath = existing.ImageUrl;
+        string? imageUrl = existing.ImageUrl;
 
-        if (dto.Image != null && dto.Image.Length > 0)
+        // 📸 обновляем изображение, если передано новое
+        if (dto.ImageFile != null && dto.ImageFile.Length > 0)
         {
-            string uploadsFolder = Path.Combine(_env.WebRootPath, "images", "products");
-            Directory.CreateDirectory(uploadsFolder);
+            var uploadsDir = Path.Combine(_env.WebRootPath, "uploads");
+            if (!Directory.Exists(uploadsDir))
+                Directory.CreateDirectory(uploadsDir);
 
-            string uniqueFileName = $"{Guid.NewGuid()}_{dto.Image.FileName}";
-            string filePath = Path.Combine(uploadsFolder, uniqueFileName);
+            var fileName = Guid.NewGuid() + Path.GetExtension(dto.ImageFile.FileName);
+            var filePath = Path.Combine(uploadsDir, fileName);
 
             using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await dto.Image.CopyToAsync(stream);
-            }
+                await dto.ImageFile.CopyToAsync(stream);
 
-            if (!string.IsNullOrEmpty(existing.ImageUrl))
-            {
-                var oldFile = Path.Combine(_env.WebRootPath, existing.ImageUrl.TrimStart('/'));
-                if (System.IO.File.Exists(oldFile))
-                    System.IO.File.Delete(oldFile);
-            }
-
-            imagePath = $"/images/products/{uniqueFileName}";
+            imageUrl = $"/uploads/{fileName}";
         }
 
-        existing.Name = dto.Name;
-        existing.Description = dto.Description;
-        existing.Price = dto.Price;
-        existing.ImageUrl = imagePath;
-        existing.ProductCategoryId = dto.ProductCategoryId;
+        var updatedProduct = new Product
+        {
+            Name = dto.Name,
+            Description = dto.Description,
+            Price = dto.Price,
+            ImageUrl = imageUrl ?? string.Empty,
+            ProductCategoryId = dto.ProductCategoryId
+        };
 
-        await _productService.UpdateAsync(id, existing);
-        return Ok(existing);
+        var result = await _service.UpdateAsync(id, updatedProduct, dto.Ingredients);
+        return Ok(result);
     }
 
-    [HttpDelete("{id:int}")]
+    // ✅ Удалить продукт
+    [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var product = await _productService.GetByIdAsync(id);
-        if (product == null)
-            return NotFound();
+        var success = await _service.DeleteAsync(id);
+        if (!success)
+            return NotFound(new { message = "Product not found" });
 
-        if (!string.IsNullOrEmpty(product.ImageUrl))
-        {
-            var filePath = Path.Combine(_env.WebRootPath, product.ImageUrl.TrimStart('/'));
-            if (System.IO.File.Exists(filePath))
-                System.IO.File.Delete(filePath);
-        }
-
-        await _productService.DeleteAsync(id);
-        return NoContent();
+        return Ok(new { message = "Product deleted successfully" });
     }
 }
