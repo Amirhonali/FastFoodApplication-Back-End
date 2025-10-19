@@ -1,145 +1,193 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using FastFood.Application.DTOs.OrderDTOs;
 using FastFood.Application.Interfaces;
 using FastFood.Domain.Entities;
+using FastFood.Domain.Enums;
 using FastFood.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace FastFood.Infrastructure.Services;
-
-public class OrderService : IOrderService
+namespace FastFood.Infrastructure.Services
 {
-    private readonly AppDbContext _context;
-
-    public OrderService(AppDbContext context)
+    public class OrderService : IOrderService
     {
-        _context = context;
-    }
+        private readonly AppDbContext _context;
 
-    public async Task<Order> CreateOrderAsync(OrderCreateDTO dto)
-    {
-        var order = new Order
+        public OrderService(AppDbContext context)
         {
-            UserId = dto.UserId,
-            Location = dto.Location,
-            OrderDate = DateTime.Now,
-            Status = FastFood.Domain.Enums.OrderStatus.Pending
-        };
-
-        decimal total = 0m;
-        foreach (var item in dto.Items)
-        {
-            var prod = await _context.Products.FindAsync(item.ProductId);
-            if (prod == null) throw new KeyNotFoundException($"Product {item.ProductId} not found");
-
-            order.OrderItems.Add(new OrderItem
-            {
-                ProductId = prod.Id,
-                Quantity = item.Quantity,
-                UnitPrice = prod.Price
-            });
-
-            total += prod.Price * item.Quantity;
+            _context = context;
         }
 
-        order.TotalPrice = total;
-        _context.Orders.Add(order);
-        await _context.SaveChangesAsync();
-        return order;
-    }
+        public async Task<IEnumerable<Order>> GetAllAsync()
+        {
+            return await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                .Include(o => o.User)
+                .AsNoTracking()
+                .ToListAsync();
+        }
 
-    public async Task<Order?> GetByIdAsync(int id)
-    {
-        return await _context.Orders
-            .Include(o => o.OrderItems)
-                .ThenInclude(oi => oi.Product)
-                    .ThenInclude(p => p.ProductIngredients)
+        public async Task<Order?> GetByIdAsync(int id)
+        {
+            return await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                .Include(o => o.User)
+                .FirstOrDefaultAsync(o => o.Id == id);
+        }
+
+        public async Task<Order> CreateOrderAsync(Order order)
+        {
+            foreach (var item in order.OrderItems)
+            {
+                var product = await _context.Products
+                    .Include(p => p.ProductIngredients)
                         .ThenInclude(pi => pi.Ingredient)
-            .FirstOrDefaultAsync(o => o.Id == id);
-    }
+                    .FirstOrDefaultAsync(p => p.Id == item.ProductId);
 
-    public async Task<IEnumerable<Order>> GetAllAsync()
-    {
-        return await _context.Orders
-            .Include(o => o.OrderItems)
-                .ThenInclude(oi => oi.Product)
-            .AsNoTracking()
-            .ToListAsync();
-    }
+                if (product == null)
+                    throw new Exception($"Product with ID={item.ProductId} not found");
 
-    public async Task<bool> CancelOrderAsync(int id)
-    {
-        var order = await _context.Orders.FindAsync(id);
-        if (order == null) return false;
-        if (order.Status == FastFood.Domain.Enums.OrderStatus.Completed) return false;
+                foreach (var pi in product.ProductIngredients)
+                {
+                    pi.Ingredient.Quantity -= pi.Quantity * item.Quantity;
+                    if (pi.Ingredient.Quantity < 0)
+                        throw new Exception($"Not enough {pi.Ingredient.Name} in stock");
+                }
 
-        order.Status = FastFood.Domain.Enums.OrderStatus.Cancelled;
-        await _context.SaveChangesAsync();
-        return true;
-    }
-
-    // Complete: check inventory, subtract ingredient quantities, compute ingredient cost
-    public async Task<bool> CompleteOrderAsync(int id)
-    {
-        var order = await _context.Orders
-            .Include(o => o.OrderItems)
-                .ThenInclude(oi => oi.Product)
-                    .ThenInclude(p => p.ProductIngredients)
-                        .ThenInclude(pi => pi.Ingredient)
-            .FirstOrDefaultAsync(o => o.Id == id);
-
-        if (order == null) return false;
-        if (order.Status == FastFood.Domain.Enums.OrderStatus.Completed) return false;
-
-        // check inventory
-        foreach (var oi in order.OrderItems)
-        {
-            var product = oi.Product;
-            foreach (var pi in product.ProductIngredients)
-            {
-                var required = pi.Quantity * oi.Quantity;
-                var ing = pi.Ingredient;
-                var current = ing.Quantity;
-                if (current < required)
-                    throw new InvalidOperationException($"Ingredient {ing.Name} not enough (required {required}, available {current}).");
+                item.UnitPrice = product.Price;
             }
+
+            order.TotalPrice = order.OrderItems.Sum(i => i.Quantity * i.UnitPrice);
+            order.Status = OrderStatus.Pending;
+
+            _context.Orders.Add(order);
+            await _context.SaveChangesAsync();
+
+            return order;
         }
 
-        // subtract and compute ingredient cost (average unit price)
-        decimal ingredientCostTotal = 0m;
-        foreach (var oi in order.OrderItems)
+        public async Task<Order?> UpdateOrderAsync(int id, Order updatedOrder)
         {
-            var product = oi.Product;
-            foreach (var pi in product.ProductIngredients)
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null)
+                return null;
+
+            if (order.Status is OrderStatus.Completed or OrderStatus.Cancelled)
+                throw new Exception("Cannot modify completed or cancelled order");
+
+            if (order.Status == OrderStatus.Processing)
             {
-                var required = pi.Quantity * oi.Quantity;
-                var ing = pi.Ingredient;
-
-                // reduce
-                var current = ing.Quantity;
-                ing.Quantity = current - required;
-
-                // average unit price from arrivals
-                var arrivals = await _context.IngredientArrivals
-                    .Where(a => a.IngredientId == ing.Id)
-                    .ToListAsync();
-
-                decimal unitPrice = 0m;
-                var totalQty = arrivals.Sum(a => a.Quantity);
-                var totalPrice = arrivals.Sum(a => a.Quantity * a.UnitPrice);
-                if (totalQty > 0)
-                    unitPrice = totalPrice / totalQty;
-
-                ingredientCostTotal += unitPrice * required;
+                await RecalculateIngredientsAsync(order.Id);
             }
+
+            order.OrderItems.Clear();
+            foreach (var item in updatedOrder.OrderItems)
+            {
+                order.OrderItems.Add(item);
+            }
+
+            order.TotalPrice = order.OrderItems.Sum(i => i.Quantity * i.UnitPrice);
+            await _context.SaveChangesAsync();
+
+            return order;
         }
 
-        order.Status = FastFood.Domain.Enums.OrderStatus.Completed;
-        // optionally: store ingredient cost somewhere — e.g., as an Expense record or in order metadata
-        await _context.SaveChangesAsync();
-        return true;
+        public async Task<bool> DeleteAsync(int id)
+        {
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null) return false;
+
+            _context.Orders.Remove(order);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> UpdateStatusAsync(int orderId, OrderStatus newStatus)
+        {
+            var order = await _context.Orders.FindAsync(orderId);
+            if (order == null) throw new Exception("Order not found");
+
+            if (order.Status == OrderStatus.Cancelled)
+                throw new Exception("Cannot update a cancelled order");
+
+            if (newStatus == OrderStatus.Cancelled)
+                return await CancelOrderAsync(orderId);
+
+            order.Status = newStatus;
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> ConfirmOrderAsync(int orderId)
+        {
+            var order = await _context.Orders.FindAsync(orderId);
+            if (order == null)
+                throw new Exception("Order not found");
+
+            if (order.Status != OrderStatus.Pending)
+                throw new Exception("Order cannot be confirmed");
+
+            order.Status = OrderStatus.Processing;
+            await _context.SaveChangesAsync();
+
+            return true;
+        }
+
+        public async Task<bool> CancelOrderAsync(int orderId)
+        {
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.ProductIngredients)
+                            .ThenInclude(pi => pi.Ingredient)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
+
+            if (order == null)
+                throw new Exception("Order not found");
+
+            if (order.Status == OrderStatus.Cancelled)
+                throw new Exception("Order already cancelled");
+
+            foreach (var item in order.OrderItems)
+            {
+                foreach (var pi in item.Product.ProductIngredients)
+                {
+                    pi.Ingredient.Quantity += pi.Quantity * item.Quantity;
+                }
+            }
+
+            order.Status = OrderStatus.Cancelled;
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> RecalculateIngredientsAsync(int orderId)
+        {
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.ProductIngredients)
+                            .ThenInclude(pi => pi.Ingredient)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
+
+            if (order == null)
+                throw new Exception("Order not found");
+
+            foreach (var item in order.OrderItems)
+            {
+                foreach (var pi in item.Product.ProductIngredients)
+                {
+                    pi.Ingredient.Quantity -= pi.Quantity * item.Quantity;
+                    if (pi.Ingredient.Quantity < 0)
+                        throw new Exception($"Not enough {pi.Ingredient.Name} in stock");
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            return true;
+        }
     }
 }

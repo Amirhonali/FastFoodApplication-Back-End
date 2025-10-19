@@ -7,9 +7,15 @@ namespace FastFood.Application.Interfaces;
 
 public interface IOrderService
 {
-    Task<Order> CreateOrderAsync(OrderCreateDTO dto);
-    Task<Order?> GetByIdAsync(int id);
     Task<IEnumerable<Order>> GetAllAsync();
-    Task<bool> CancelOrderAsync(int id);
-    Task<bool> CompleteOrderAsync(int id); // confirms and decrements ingredients / creates expense records
+    Task<Order?> GetByIdAsync(int id);
+    Task<Order> CreateOrderAsync(Order order);
+    Task<Order?> UpdateOrderAsync(int id, Order updatedOrder);
+    Task<bool> DeleteAsync(int id);
+
+    Task<bool> UpdateStatusAsync(int orderId, OrderStatus newStatus);
+    Task<bool> CancelOrderAsync(int orderId);
+    Task<bool> ConfirmOrderAsync(int orderId);
+
+    Task<bool> RecalculateIngredientsAsync(int orderId);
 }
