@@ -86,7 +86,7 @@ namespace FastFood.Infrastructure.Services
             {
                 UserId = userId,
                 TotalPrice = cart.TotalPrice,
-                Location = "Default Location",
+                Location = "Default Location",  
                 OrderItems = cart.Items.Select(i => new OrderItem
                 {
                     ProductId = i.ProductId,

@@ -2,10 +2,11 @@ using System;
 
 namespace FastFood.Domain.Entities;
 
-public class Role
+public class Branch
 {
     public int Id { get; set; }
     public string Name { get; set; }
-    public ICollection<Permission> Permissions { get; set; } = new List<Permission>();
+    public string Location { get; set; }
+
     public ICollection<Staff> StaffMembers { get; set; } = new List<Staff>();
 }

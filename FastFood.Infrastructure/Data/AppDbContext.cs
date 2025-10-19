@@ -22,6 +22,10 @@ namespace FastFood.Infrastructure.Data
         public DbSet<ProductIngredient> ProductIngredients { get; set; }
         public DbSet<IngredientArrival> IngredientArrivals { get; set; }
         public DbSet<CashRegister> CashRegisters { get; set; }
+        public DbSet<Staff> Staffs { get; set; }
+        public DbSet<Role> Roles { get; set; }
+        public DbSet<Permission> Permissions { get; set; }
+        public DbSet<Branch> Branches { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -55,6 +59,37 @@ namespace FastFood.Infrastructure.Data
                 .WithOne(p => p.ProductCategory)
                 .HasForeignKey(p => p.ProductCategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Branch>()
+                .HasMany(b => b.StaffMembers)
+                .WithOne(s => s.Branch)
+                .HasForeignKey(s => s.BranchId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Role>()
+                .HasMany(r => r.StaffMembers)
+                .WithOne(s => s.Role)
+                .HasForeignKey(s => s.RoleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Role>()
+                .HasMany(r => r.Permissions)
+                .WithMany(p => p.Roles)
+                .UsingEntity<Dictionary<string, object>>(
+                    "RolePermission",
+                        rp => rp.HasOne<Permission>()
+                            .WithMany()
+                            .HasForeignKey("PermissionId")
+                            .OnDelete(DeleteBehavior.Cascade),
+                        rp => rp.HasOne<Role>()
+                            .WithMany()
+                            .HasForeignKey("RoleId")
+                            .OnDelete(DeleteBehavior.Cascade),
+                        rp =>
+                        {
+                            rp.HasKey("RoleId", "PermissionId");
+                            rp.ToTable("RolePermissions");
+                        });
         }
 
         /// <summary>
