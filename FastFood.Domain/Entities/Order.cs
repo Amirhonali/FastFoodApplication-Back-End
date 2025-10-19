@@ -8,7 +8,7 @@ public class Order
     public int Id { get; set; }
 
     public string OrderNumber { get; set; } = Guid.NewGuid().ToString("N")[..8].ToUpper();
-    public DateTime OrderDate { get; set; } = DateTime.Now;
+    public DateTime OrderDate { get; set; } = DateTime.UtcNow;
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
 
     public int UserId { get; set; }

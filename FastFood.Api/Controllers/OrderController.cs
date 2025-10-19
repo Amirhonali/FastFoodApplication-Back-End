@@ -17,7 +17,7 @@ namespace FastFood.API.Controllers
             _service = service;
         }
 
-        //GET: api/order
+        // ✅ GET: api/order
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
@@ -45,7 +45,7 @@ namespace FastFood.API.Controllers
             return Ok(response);
         }
 
-        //GET: api/order/{id}
+        // ✅ GET: api/order/{id}
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
         {
@@ -75,7 +75,7 @@ namespace FastFood.API.Controllers
             return Ok(response);
         }
 
-        //POST: api/order
+        // ✅ POST: api/order
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] OrderCreateDTO dto)
         {
@@ -99,7 +99,7 @@ namespace FastFood.API.Controllers
             return CreatedAtAction(nameof(GetById), new { id = created.Id }, new { created.Id, created.OrderNumber });
         }
 
-        //PUT: api/order/{id}
+        // ✅ PUT: api/order/{id}
         [HttpPut("{id:int}")]
         public async Task<IActionResult> Update(int id, [FromBody] OrderUpdateDTO dto)
         {
@@ -117,15 +117,26 @@ namespace FastFood.API.Controllers
                 }).ToList()
             };
 
-            var result = await _service.UpdateOrderAsync(id, updatedOrder);
+            try
+            {
+                var result = await _service.UpdateOrderAsync(id, updatedOrder);
 
-            if (result == null)
-                return NotFound(new { message = $"Order with id={id} not found" });
+                if (result == null)
+                    return NotFound(new { message = $"Order with id={id} not found" });
 
-            return Ok(new { message = "Order updated successfully" });
+                return Ok(new
+                {
+                    message = "Order updated successfully",
+                    totalPrice = result.TotalPrice
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        //PATCH: api/order/{id}/status
+        // ✅ PATCH: api/order/{id}/status
         [HttpPatch("{id:int}/status")]
         public async Task<IActionResult> UpdateStatus(int id, [FromQuery] OrderStatus status)
         {
@@ -136,7 +147,7 @@ namespace FastFood.API.Controllers
             return Ok(new { message = $"Order status updated to {status}" });
         }
 
-        //POST: api/order/{id}/confirm
+        // ✅ POST: api/order/{id}/confirm
         [HttpPost("{id:int}/confirm")]
         public async Task<IActionResult> Confirm(int id)
         {
@@ -144,7 +155,7 @@ namespace FastFood.API.Controllers
             return Ok(new { message = "Order confirmed successfully" });
         }
 
-        //POST: api/order/{id}/cancel
+        // ✅ POST: api/order/{id}/cancel
         [HttpPost("{id:int}/cancel")]
         public async Task<IActionResult> Cancel(int id)
         {
@@ -152,7 +163,7 @@ namespace FastFood.API.Controllers
             return Ok(new { message = "Order cancelled and ingredients restored" });
         }
 
-        //DELETE: api/order/{id}
+        // ✅ DELETE: api/order/{id}
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Delete(int id)
         {

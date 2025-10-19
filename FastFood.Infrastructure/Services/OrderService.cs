@@ -15,6 +15,7 @@ namespace FastFood.Infrastructure.Services
             _context = context;
         }
 
+        //Получить все заказы
         public async Task<IEnumerable<Order>> GetAllAsync()
         {
             return await _context.Orders
@@ -25,6 +26,7 @@ namespace FastFood.Infrastructure.Services
                 .ToListAsync();
         }
 
+        //Получить заказ по ID
         public async Task<Order?> GetByIdAsync(int id)
         {
             return await _context.Orders
@@ -34,8 +36,10 @@ namespace FastFood.Infrastructure.Services
                 .FirstOrDefaultAsync(o => o.Id == id);
         }
 
+        //Создание нового заказа
         public async Task<Order> CreateOrderAsync(Order order)
         {
+            // Уменьшаем количество ингредиентов при создании
             foreach (var item in order.OrderItems)
             {
                 var product = await _context.Products
@@ -65,11 +69,12 @@ namespace FastFood.Infrastructure.Services
             return order;
         }
 
+        //Обновление заказа
         public async Task<Order?> UpdateOrderAsync(int id, Order updatedOrder)
         {
             var order = await _context.Orders
                 .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Product)
+                .ThenInclude(oi => oi.Product)
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (order == null)
@@ -78,23 +83,40 @@ namespace FastFood.Infrastructure.Services
             if (order.Status is OrderStatus.Completed or OrderStatus.Cancelled)
                 throw new Exception("Cannot modify completed or cancelled order");
 
+            // если заказ уже подтверждён, пересчитаем ингредиенты
             if (order.Status == OrderStatus.Processing)
-            {
                 await RecalculateIngredientsAsync(order.Id);
-            }
 
+            // очищаем старые позиции
             order.OrderItems.Clear();
+
+            decimal total = 0m;
+
+            // создаём новые позиции и сразу считаем цену
             foreach (var item in updatedOrder.OrderItems)
             {
-                order.OrderItems.Add(item);
+                var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId);
+                if (product == null)
+                    throw new Exception($"Product with id={item.ProductId} not found");
+
+                var orderItem = new OrderItem
+                {
+                    ProductId = product.Id,
+                    Quantity = item.Quantity,
+                    UnitPrice = product.Price
+                };
+
+                total += orderItem.SubTotal;
+                order.OrderItems.Add(orderItem);
             }
 
-            order.TotalPrice = order.OrderItems.Sum(i => i.Quantity * i.UnitPrice);
-            await _context.SaveChangesAsync();
+            order.TotalPrice = total;
 
+            await _context.SaveChangesAsync();
             return order;
         }
 
+        //Удалить заказ
         public async Task<bool> DeleteAsync(int id)
         {
             var order = await _context.Orders.FindAsync(id);
@@ -105,6 +127,7 @@ namespace FastFood.Infrastructure.Services
             return true;
         }
 
+        //Обновление статуса заказа
         public async Task<bool> UpdateStatusAsync(int orderId, OrderStatus newStatus)
         {
             var order = await _context.Orders.FindAsync(orderId);
@@ -121,6 +144,7 @@ namespace FastFood.Infrastructure.Services
             return true;
         }
 
+        //Подтверждение заказа (Pending → Processing)
         public async Task<bool> ConfirmOrderAsync(int orderId)
         {
             var order = await _context.Orders.FindAsync(orderId);
@@ -136,6 +160,7 @@ namespace FastFood.Infrastructure.Services
             return true;
         }
 
+        //Отмена заказа (возврат ингредиентов)
         public async Task<bool> CancelOrderAsync(int orderId)
         {
             var order = await _context.Orders
@@ -151,6 +176,7 @@ namespace FastFood.Infrastructure.Services
             if (order.Status == OrderStatus.Cancelled)
                 throw new Exception("Order already cancelled");
 
+            // возвращаем ингредиенты
             foreach (var item in order.OrderItems)
             {
                 foreach (var pi in item.Product.ProductIngredients)
@@ -164,6 +190,7 @@ namespace FastFood.Infrastructure.Services
             return true;
         }
 
+        //Пересчёт ингредиентов (при изменении заказа)
         public async Task<bool> RecalculateIngredientsAsync(int orderId)
         {
             var order = await _context.Orders
@@ -188,6 +215,31 @@ namespace FastFood.Infrastructure.Services
 
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        public async Task<Order> CreateOrderFromCartAsync(string userId, Cart cart, string location)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id.ToString() == userId);
+            if (user == null)
+                throw new Exception("User not found");
+
+            var order = new Order
+            {
+                UserId = user.Id,
+                Location = location,
+                Status = OrderStatus.Pending,
+                OrderItems = cart.Items.Select(item => new OrderItem
+                {
+                    ProductId = item.ProductId,
+                    Quantity = item.Quantity,
+                    UnitPrice = item.UnitPrice
+                }).ToList(),
+                TotalPrice = cart.TotalPrice
+            };
+
+            _context.Orders.Add(order);
+            await _context.SaveChangesAsync();
+            return order;
         }
     }
 }

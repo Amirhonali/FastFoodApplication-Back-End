@@ -12,14 +12,16 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 // EF Core
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
+    
+builder.Services.AddMemoryCache();
 
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IProductCategoryService, ProductCategoryService>();
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IIngredientService, IngredientService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
-builder.Services.AddScoped<IOrderItemService, OrderItemService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<ICartService, CartService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
