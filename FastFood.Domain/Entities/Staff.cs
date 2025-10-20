@@ -1,6 +1,7 @@
 using System;
 
 namespace FastFood.Domain.Entities;
+
 public class Staff
 {
     public int Id { get; set; }
@@ -13,6 +14,9 @@ public class Staff
     public Role Role { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    public int FailedLoginAttempts { get; set; }
+    public DateTime? LockoutEnd { get; set; }
 
     // Привязка к филиалу или рабочей зоне
     public int? BranchId { get; set; }
