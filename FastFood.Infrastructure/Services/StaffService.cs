@@ -1,4 +1,5 @@
 using FastFood.Application.DTOs.StaffDTOs;
+using FastFood.Application.DTOs.TokenDTOs;
 using FastFood.Application.Interfaces;
 using FastFood.Domain.Entities;
 using FastFood.Infrastructure.Data;
@@ -32,20 +33,14 @@ namespace FastFood.Infrastructure.Services
                 .ThenInclude(r => r.Permissions)
                 .FirstOrDefaultAsync(s => s.Username == dto.Username);
 
-            if (staff == null)
-            {
-                _logger.LogWarning("Неудачная попытка входа: пользователь {Username} не найден", dto.Username);
+            if (staff == null || !BCrypt.Net.BCrypt.Verify(dto.Password, staff.PasswordHash))
                 throw new Exception("Неверный логин или пароль");
-            }
-
-            if (!BCrypt.Net.BCrypt.Verify(dto.Password, staff.PasswordHash))
-            {
-                _logger.LogWarning("Неудачная попытка входа для {Username}: неверный пароль", dto.Username);
-                throw new Exception("Неверный логин или пароль");
-            }
 
             if (!staff.IsActive)
                 throw new Exception("Пользователь заблокирован");
+
+            var accessToken = _jwtService.GenerateToken(staff);
+            var refreshToken = await GenerateRefreshTokenAsync(staff.Id);
 
             _logger.LogInformation("Пользователь {Username} успешно вошёл", dto.Username);
 
@@ -56,7 +51,8 @@ namespace FastFood.Infrastructure.Services
                 Username = staff.Username,
                 Role = staff.Role.Name,
                 Permissions = staff.Role.Permissions.Select(p => p.Code).ToList(),
-                Token = _jwtService.GenerateToken(staff)
+                Token = accessToken,
+                RefreshToken = refreshToken
             };
         }
 
@@ -112,6 +108,53 @@ namespace FastFood.Infrastructure.Services
 
             _logger.LogInformation("Получен список всех сотрудников (кол-во: {Count})", result.Count);
             return result;
+        }
+
+        private async Task<string> GenerateRefreshTokenAsync(int staffId)
+        {
+            var token = new RefreshToken
+            {
+                StaffId = staffId,
+                Token = Guid.NewGuid().ToString("N"),
+                ExpiresAt = DateTime.UtcNow.AddDays(7)
+            };
+
+            _context.RefreshTokens.Add(token);
+            await _context.SaveChangesAsync();
+            return token.Token;
+        }
+
+        public async Task<TokenResponseDTO> RefreshTokenAsync(RefreshRequestDTO dto)
+        {
+            var principal = _jwtService.GetPrincipalFromExpiredToken(dto.AccessToken);
+            if (principal == null)
+                throw new Exception("Неверный access токен");
+
+            var staffId = int.Parse(principal.FindFirst("id").Value);
+
+            var refresh = await _context.RefreshTokens
+                .FirstOrDefaultAsync(r => r.Token == dto.RefreshToken && r.StaffId == staffId);
+
+            if (refresh == null || refresh.IsUsed || refresh.IsRevoked || refresh.ExpiresAt < DateTime.UtcNow)
+                throw new Exception("Неверный или просроченный refresh токен");
+
+            refresh.IsUsed = true;
+            await _context.SaveChangesAsync();
+
+            var staff = await _context.Staffs
+                .Include(s => s.Role)
+                .ThenInclude(r => r.Permissions)
+                .FirstOrDefaultAsync(s => s.Id == staffId);
+
+            var newAccessToken = _jwtService.GenerateToken(staff);
+            var newRefreshToken = await GenerateRefreshTokenAsync(staff.Id);
+
+            return new TokenResponseDTO
+            {
+                AccessToken = newAccessToken,
+                RefreshToken = newRefreshToken,
+                ExpiresAt = DateTime.UtcNow.AddHours(12)
+            };
         }
     }
 }

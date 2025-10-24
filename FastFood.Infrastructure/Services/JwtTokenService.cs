@@ -1,15 +1,14 @@
-using System;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using FastFood.Application.Interfaces;
 using FastFood.Domain.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
-namespace FastFood.Infrastructure.Services;
-
-public class JwtTokenService : IJwtTokenService
+namespace FastFood.Infrastructure.Services
+{
+    public class JwtTokenService : IJwtTokenService
     {
         private readonly IConfiguration _config;
 
@@ -20,7 +19,7 @@ public class JwtTokenService : IJwtTokenService
 
         public string GenerateToken(Staff staff)
         {
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var claims = new List<Claim>
@@ -43,4 +42,28 @@ public class JwtTokenService : IJwtTokenService
 
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
+
+        public ClaimsPrincipal? GetPrincipalFromExpiredToken(string token)
+        {
+            var tokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"])),
+                ValidateLifetime = false
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            try
+            {
+                var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out var _);
+                return principal;
+            }
+            catch
+            {
+                return null;
+            }
+        }
     }
+}

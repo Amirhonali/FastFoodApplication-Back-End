@@ -4,6 +4,7 @@ namespace FastFood.Domain.Enums;
 
 public enum OrderType
 {
-    Takeaway, // soboy
-    Delivery  // dostavka
+    DineIn = 1,   
+    Takeaway = 2,
+    Delivery = 3    
 }

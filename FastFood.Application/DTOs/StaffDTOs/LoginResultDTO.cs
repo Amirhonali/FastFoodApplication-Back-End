@@ -10,4 +10,5 @@ public class LoginResultDTO
     public string Role { get; set; } = null!;
     public List<string> Permissions { get; set; } = new();
     public string Token { get; set; } = null!;
+    public string RefreshToken { get; set; } = null!;   
 }

@@ -21,4 +21,7 @@ public class Staff
     // Привязка к филиалу или рабочей зоне
     public int? BranchId { get; set; }
     public Branch? Branch { get; set; }
+
+    public ICollection<CashShift> CashShifts { get; set; } = new List<CashShift>();
+    public ICollection<Order> Orders { get; set; } = new List<Order>();
 }
